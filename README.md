@@ -1,11 +1,3 @@
----
-title: College Event Openenv
-emoji: 🎓
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
 # College Event Registration System (OpenEnv-Compatible)
 
 A simple **OpenEnv-compatible environment** for a **college event registration system** built using **FastAPI**.
