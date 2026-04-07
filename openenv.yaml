@@ -1,0 +1,94 @@
+name: college-event-registration-openenv
+description: OpenEnv-compatible environment for a college event registration system (events, capacity, registrations, cancellations).
+version: 0.1.0
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+endpoints:
+  tasks: /tasks
+  baseline: /baseline
+  grader: /grader
+  reset: /env/reset
+  step: /env/step
+  state: /env/state
+
+observation:
+  type: object
+  description: Environment observation/state snapshot.
+  properties:
+    episode_id: { type: string }
+    task_id: { type: string }
+    task_title: { type: string }
+    step_count: { type: integer }
+    max_steps: { type: integer }
+    done: { type: boolean }
+    last_action:
+      nullable: true
+      oneOf:
+        - $ref: "#/action"
+    messages:
+      type: array
+      items: { type: string }
+    errors:
+      type: array
+      items: { type: string }
+    events:
+      type: array
+      items:
+        type: object
+        properties:
+          id: { type: string }
+          title: { type: string }
+          location: { type: string }
+          starts_at: { type: string }
+          capacity: { type: integer }
+          seats_taken: { type: integer }
+          seats_left: { type: integer }
+    registrations:
+      type: array
+      items:
+        type: object
+        properties:
+          student_id: { type: string }
+          event_id: { type: string }
+          status: { type: string, enum: ["registered", "cancelled"] }
+          created_at: { type: string }
+
+action:
+  type: object
+  description: A structured action for event management.
+  properties:
+    type:
+      type: string
+      enum: ["view_events", "view_event", "view_registrations", "register", "cancel"]
+    student_id:
+      nullable: true
+      type: string
+    event_id:
+      nullable: true
+      type: string
+  required: ["type"]
+
+reward:
+  type: object
+  properties:
+    value:
+      type: number
+      minimum: 0.0
+      maximum: 1.0
+    reason:
+      type: string
+  description: Reward signal in [0.0, 1.0]. Invalid actions return 0.0; goal satisfaction returns 1.0.
+
+tasks:
+  - id: college_event_task_1
+    title: "Task 1 (Easy): Register one student"
+    difficulty: easy
+  - id: college_event_task_2
+    title: "Task 2 (Medium): Register multiple + prevent duplicates"
+    difficulty: medium
+  - id: college_event_task_3
+    title: "Task 3 (Hard): Multiple events + cancellations + capacity"
+    difficulty: hard
