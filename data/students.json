@@ -1,0 +1,17 @@
+[
+  {
+    "id": "stu_001",
+    "name": "Aisha Khan",
+    "email": "aisha.khan@college.edu"
+  },
+  {
+    "id": "stu_002",
+    "name": "Ben Carter",
+    "email": "ben.carter@college.edu"
+  },
+  {
+    "id": "stu_003",
+    "name": "Chen Wei",
+    "email": "chen.wei@college.edu"
+  }
+]

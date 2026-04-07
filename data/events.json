@@ -1,0 +1,23 @@
+[
+  {
+    "id": "evt_orientation_101",
+    "title": "Freshers Orientation 101",
+    "location": "Main Auditorium",
+    "starts_at": "2026-09-01T10:00:00",
+    "capacity": 1
+  },
+  {
+    "id": "evt_ai_workshop",
+    "title": "AI Club: Intro Workshop",
+    "location": "CS Lab 2",
+    "starts_at": "2026-09-03T16:00:00",
+    "capacity": 2
+  },
+  {
+    "id": "evt_career_fair",
+    "title": "Campus Career Fair",
+    "location": "Sports Complex",
+    "starts_at": "2026-09-10T09:00:00",
+    "capacity": 4
+  }
+]
