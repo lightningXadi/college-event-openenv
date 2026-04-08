@@ -119,7 +119,6 @@ def _try_llm_action(api_key: str, api_base: str, task_description: str, obs: dic
         }).encode("utf-8")
 
         base = api_base.rstrip("/")
-        # Try both URL patterns
         urls = [
             base + "/chat/completions",
             (base + "/v1/chat/completions") if not base.endswith("/v1") else (base[:-3] + "/chat/completions"),
@@ -154,11 +153,16 @@ def _try_llm_action(api_key: str, api_base: str, task_description: str, obs: dic
 # Structured stdout output
 # ---------------------------------------------------------------------------
 
+def _clamp_score(score: float) -> float:
+    """Ensure score is strictly between 0 and 1, never 0.0 or 1.0."""
+    score = max(0.01, min(0.99, float(score)))
+    return round(score, 4)
+
+
 def _run_structured_output() -> None:
     api_key = os.environ.get("API_KEY", "").strip()
     api_base = os.environ.get("API_BASE_URL", "").strip()
 
-    # No credentials = normal HF Space startup, skip
     if not api_key or not api_base:
         return
 
@@ -177,7 +181,6 @@ def _run_structured_output() -> None:
         for _ in range(task.max_steps):
             obs_dict = obs.model_dump() if hasattr(obs, "model_dump") else obs.dict()
 
-            # Try LLM first, fall back to deterministic if it fails
             action_dict = _try_llm_action(api_key, api_base, task.description, obs_dict, history)
 
             if action_dict is not None:
@@ -201,7 +204,8 @@ def _run_structured_output() -> None:
             events=_read_json("events.json"),
             registrations=_read_json("registrations.json"),
         )
-        print(f"[END] task={task_id} score={result['score']} steps={step_num}", flush=True)
+        score = _clamp_score(result["score"])
+        print(f"[END] task={task_id} score={score} steps={step_num}", flush=True)
 
 
 _run_structured_output()
