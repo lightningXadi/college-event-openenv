@@ -3,13 +3,14 @@ inference.py  –  OpenEnv compatibility shim
 --------------------------------------------
 - Exposes the FastAPI `app` for uvicorn (inference:app)
 - Prints [START]/[STEP]/[END] structured output via LiteLLM proxy
-  (only when API_KEY and API_BASE_URL are injected by the validator)
 """
 
 from __future__ import annotations
 
 import json
 import os
+import urllib.request
+import urllib.error
 from typing import Optional
 
 from fastapi import HTTPException
@@ -49,10 +50,10 @@ def state() -> Observation:
 
 
 # ---------------------------------------------------------------------------
-# LLM agent using injected proxy credentials
+# LLM call via raw HTTP — avoids OpenAI client URL format issues
 # ---------------------------------------------------------------------------
 
-def _get_llm_action(client, task_description: str, obs: dict, history: list) -> dict:
+def _get_llm_action(api_key: str, api_base: str, task_description: str, obs: dict, history: list) -> dict:
     system_prompt = (
         "You are an AI agent controlling a college event registration system.\n\n"
         "Your goal is to complete the given task by choosing actions one at a time.\n\n"
@@ -62,29 +63,50 @@ def _get_llm_action(client, task_description: str, obs: dict, history: list) -> 
         '3. Register student:    {"type": "register", "student_id": "stu_001", "event_id": "evt_orientation_101"}\n'
         '4. Cancel registration: {"type": "cancel", "student_id": "stu_001", "event_id": "evt_orientation_101"}\n\n'
         "Rules:\n"
-        "- Always start by viewing events to understand what is available.\n"
+        "- Always start by viewing events.\n"
         "- Never register the same student for the same event twice.\n"
         "- Respond ONLY with a JSON object. No explanation, no markdown, no extra text."
     )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {
-            "role": "user",
-            "content": (
-                f"Task: {task_description}\n\n"
-                f"Current observation:\n{json.dumps(obs, indent=2)}\n\n"
-                f"Action history so far:\n{json.dumps(history, indent=2)}\n\n"
-                "What is the next action? Respond with JSON only."
-            ),
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"Task: {task_description}\n\n"
+                    f"Current observation:\n{json.dumps(obs, indent=2)}\n\n"
+                    f"Action history so far:\n{json.dumps(history, indent=2)}\n\n"
+                    "What is the next action? Respond with JSON only."
+                ),
+            },
+        ],
+        "temperature": 0.0,
+        "max_tokens": 150,
+    }
+
+    # Build the endpoint URL — handle trailing slash and missing /v1
+    base = api_base.rstrip("/")
+    if not base.endswith("/v1"):
+        base = base + "/v1"
+    url = base + "/chat/completions"
+
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
         },
-    ]
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages,
-        temperature=0.0,
-        max_tokens=150,
+        method="POST",
     )
-    raw = response.choices[0].message.content.strip()
+
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    raw = data["choices"][0]["message"]["content"].strip()
     raw = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(raw)
 
@@ -97,13 +119,9 @@ def _run_structured_output() -> None:
     api_key = os.environ.get("API_KEY", "").strip()
     api_base = os.environ.get("API_BASE_URL", "").strip()
 
-    # Skip silently during normal HF Space startup (no credentials injected yet).
-    # The validator will re-run this module with credentials present.
+    # Skip during normal HF Space startup — validator injects vars at eval time
     if not api_key or not api_base:
         return
-
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key, base_url=api_base)
 
     _env = env.__class__()
 
@@ -117,7 +135,7 @@ def _run_structured_output() -> None:
 
         for _ in range(task.max_steps):
             obs_dict = obs.model_dump() if hasattr(obs, "model_dump") else obs.dict()
-            action_dict = _get_llm_action(client, task.description, obs_dict, history)
+            action_dict = _get_llm_action(api_key, api_base, task.description, obs_dict, history)
             action = Action(**action_dict)
             history.append(action_dict)
 
