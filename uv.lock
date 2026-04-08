@@ -1,0 +1,27 @@
+version = 1
+requires-python = ">=3.11"
+
+[[package]]
+name = "college-event-openenv"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+  { name = "fastapi" },
+  { name = "uvicorn", extra = ["standard"] },
+  { name = "pydantic" },
+  { name = "pyyaml" },
+  { name = "requests" },
+  { name = "openai" },
+  { name = "openenv-core" },
+]
+
+[package.metadata]
+requires-dist = [
+  { name = "fastapi", specifier = "==0.115.6" },
+  { name = "uvicorn", extras = ["standard"], specifier = "==0.32.1" },
+  { name = "pydantic", specifier = "==2.10.3" },
+  { name = "pyyaml", specifier = "==6.0.2" },
+  { name = "requests", specifier = "==2.32.3" },
+  { name = "openai", specifier = "==1.35.0" },
+  { name = "openenv-core", specifier = ">=0.2.0" },
+]
