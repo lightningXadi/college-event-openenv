@@ -50,8 +50,23 @@ def state() -> Observation:
 
 
 # ---------------------------------------------------------------------------
-# LLM call via raw HTTP — avoids OpenAI client URL format issues
+# LLM call — tries multiple URL patterns, wraps all errors
 # ---------------------------------------------------------------------------
+
+def _chat_completion(url: str, api_key: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
 
 def _get_llm_action(api_key: str, api_base: str, task_description: str, obs: dict, history: list) -> dict:
     system_prompt = (
@@ -86,29 +101,30 @@ def _get_llm_action(api_key: str, api_base: str, task_description: str, obs: dic
         "max_tokens": 150,
     }
 
-    # Build the endpoint URL — handle trailing slash and missing /v1
     base = api_base.rstrip("/")
-    if not base.endswith("/v1"):
-        base = base + "/v1"
-    url = base + "/chat/completions"
 
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
+    # Try multiple URL patterns in case the proxy uses a different format
+    candidate_urls = []
+    if base.endswith("/v1"):
+        candidate_urls.append(base + "/chat/completions")
+        candidate_urls.append(base[: -len("/v1")] + "/chat/completions")
+    else:
+        candidate_urls.append(base + "/v1/chat/completions")
+        candidate_urls.append(base + "/chat/completions")
 
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    last_error = None
+    for url in candidate_urls:
+        try:
+            data = _chat_completion(url, api_key, payload)
+            raw = data["choices"][0]["message"]["content"].strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            return json.loads(raw)
+        except Exception as e:
+            last_error = e
+            continue
 
-    raw = data["choices"][0]["message"]["content"].strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    # All URLs failed — raise the last error so validator sees it clearly
+    raise RuntimeError(f"LLM proxy unreachable. Last error: {last_error}. Tried: {candidate_urls}")
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +135,6 @@ def _run_structured_output() -> None:
     api_key = os.environ.get("API_KEY", "").strip()
     api_base = os.environ.get("API_BASE_URL", "").strip()
 
-    # Skip during normal HF Space startup — validator injects vars at eval time
     if not api_key or not api_base:
         return
 
