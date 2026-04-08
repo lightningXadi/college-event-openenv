@@ -1,57 +1,81 @@
 """
 inference.py  –  OpenEnv compatibility shim
 --------------------------------------------
-The OpenEnv validator expects the following top-level routes:
-  POST /reset          -> resets the environment
-  POST /step           -> takes an action
-  GET  /state          -> returns current observation
-  GET  /tasks          -> lists available tasks
-  POST /grader         -> grades the current episode
-  POST /baseline       -> runs the deterministic baseline
-  GET  /health         -> health-check
+Runs all tasks through the deterministic baseline agent and prints
+the required [START] / [STEP] / [END] structured output blocks to stdout
+so the OpenEnv validator can parse results.
 
-This file re-exports the same FastAPI `app` from app.py and adds
-the flat aliases that OpenEnv's structural checker requires.
+Expected output format:
+  [START] task=<task_id>
+  [STEP] step=<n> reward=<value>
+  [END] task=<task_id> score=<value> steps=<n>
 """
 
 from __future__ import annotations
 
-from typing import Optional
+import sys
 
-from fastapi import HTTPException
-from pydantic import BaseModel
-
-# Re-use the already-configured app (all existing /env/* routes are preserved)
-from app import app, env
-from environment import Action, Observation, StepResult
+from environment import CollegeEventEnv, Action, _read_json
+from grader import grade_from_task_id
+from tasks import get_tasks
 
 
-class ResetRequest(BaseModel):
-    task_id: Optional[str] = "college_event_task_1"
+def _plan_for_task(task_id: str):
+    if task_id == "college_event_task_1":
+        return [
+            Action(type="view_events"),
+            Action(type="register", student_id="stu_001", event_id="evt_orientation_101"),
+            Action(type="view_registrations"),
+        ]
+
+    if task_id == "college_event_task_2":
+        return [
+            Action(type="view_events"),
+            Action(type="register", student_id="stu_001", event_id="evt_ai_workshop"),
+            Action(type="register", student_id="stu_002", event_id="evt_ai_workshop"),
+            Action(type="view_registrations"),
+        ]
+
+    # Task 3 (hard)
+    return [
+        Action(type="view_events"),
+        Action(type="register", student_id="stu_001", event_id="evt_orientation_101"),
+        Action(type="register", student_id="stu_002", event_id="evt_ai_workshop"),
+        Action(type="cancel", student_id="stu_001", event_id="evt_orientation_101"),
+        Action(type="register", student_id="stu_001", event_id="evt_ai_workshop"),
+        Action(type="view_registrations"),
+    ]
 
 
-# ---------------------------------------------------------------------------
-# Flat OpenEnv-required routes
-# ---------------------------------------------------------------------------
+def run_all_tasks():
+    env = CollegeEventEnv()
+    tasks = get_tasks()
+
+    for task in tasks:
+        task_id = task.id
+
+        print(f"[START] task={task_id}", flush=True)
+
+        obs = env.reset(task_id)
+        step_num = 0
+
+        for action in _plan_for_task(task_id):
+            res = env.step(action)
+            step_num += 1
+            reward_value = res.reward.value
+            print(f"[STEP] step={step_num} reward={reward_value}", flush=True)
+            if res.done:
+                break
+
+        result = grade_from_task_id(
+            task_id,
+            events=_read_json("events.json"),
+            registrations=_read_json("registrations.json"),
+        )
+        score = result["score"]
+
+        print(f"[END] task={task_id} score={score} steps={step_num}", flush=True)
 
 
-@app.post("/reset", response_model=Observation)
-def reset(req: Optional[ResetRequest] = None) -> Observation:
-    """OpenEnv structural check: POST /reset"""
-    task_id = (req.task_id if req and req.task_id else None) or "college_event_task_1"
-    try:
-        return env.reset(task_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Unknown task_id")
-
-
-@app.post("/step", response_model=StepResult)
-def step(action: Action) -> StepResult:
-    """OpenEnv structural check: POST /step"""
-    return env.step(action)
-
-
-@app.get("/state", response_model=Observation)
-def state() -> Observation:
-    """OpenEnv structural check: GET /state"""
-    return env.state()
+if __name__ == "__main__":
+    run_all_tasks()
