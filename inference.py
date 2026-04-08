@@ -27,7 +27,7 @@ from environment import Action, Observation, StepResult
 
 
 class ResetRequest(BaseModel):
-    task_id: str
+    task_id: Optional[str] = "college_event_task_1"
 
 
 # ---------------------------------------------------------------------------
@@ -36,10 +36,11 @@ class ResetRequest(BaseModel):
 
 
 @app.post("/reset", response_model=Observation)
-def reset(req: ResetRequest) -> Observation:
+def reset(req: Optional[ResetRequest] = None) -> Observation:
     """OpenEnv structural check: POST /reset"""
+    task_id = (req.task_id if req and req.task_id else None) or "college_event_task_1"
     try:
-        return env.reset(req.task_id)
+        return env.reset(task_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Unknown task_id")
 
