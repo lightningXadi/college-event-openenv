@@ -14,10 +14,11 @@ dependencies = [
     "pyyaml==6.0.2",
     "requests==2.32.3",
     "openai==1.35.0",
+    "openenv-core>=0.2.0",
 ]
 
-[project.optional-dependencies]
-dev = []
+[project.scripts]
+server = "inference:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
